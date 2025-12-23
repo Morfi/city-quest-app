@@ -7,13 +7,22 @@ import {
   StyleSheet,
   TouchableOpacity,
   Dimensions,
+  Modal,
+  Alert,
+  TextInput,
 } from 'react-native';
-import { mockPhotos } from '../data/mockData';
+import * as ImagePicker from 'expo-image-picker';
+import { mockPhotos, mockQuests } from '../data/mockData';
+import type { Photo, Quest } from '../types';
 
 const { width } = Dimensions.get('window');
 
 export default function FeedScreen() {
-  const [photos] = useState(mockPhotos);
+  const [photos, setPhotos] = useState<Photo[]>(mockPhotos);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [selectedQuest, setSelectedQuest] = useState<Quest | null>(null);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [location, setLocation] = useState('');
 
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);
@@ -27,12 +36,111 @@ export default function FeedScreen() {
     return 'Только что';
   };
 
+  const requestPermissions = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Ошибка', 'Нужно разрешение на доступ к галерее');
+      return false;
+    }
+    return true;
+  };
+
+  const pickImage = async () => {
+    const hasPermission = await requestPermissions();
+    if (!hasPermission) return;
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 1,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setSelectedImage(result.assets[0].uri);
+    }
+  };
+
+  const takePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Ошибка', 'Нужно разрешение на доступ к камере');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 1,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setSelectedImage(result.assets[0].uri);
+    }
+  };
+
+  const showImagePicker = () => {
+    Alert.alert(
+      'Выберите источник',
+      'Откуда вы хотите загрузить фотографию?',
+      [
+        { text: 'Камера', onPress: takePhoto },
+        { text: 'Галерея', onPress: pickImage },
+        { text: 'Отмена', style: 'cancel' },
+      ]
+    );
+  };
+
+  const handleCreatePhoto = () => {
+    if (!selectedQuest) {
+      Alert.alert('Ошибка', 'Пожалуйста, выберите квест');
+      return;
+    }
+    if (!selectedImage) {
+      Alert.alert('Ошибка', 'Пожалуйста, загрузите фотографию');
+      return;
+    }
+
+    const newPhoto: Photo = {
+      id: Date.now().toString(),
+      questId: selectedQuest.id,
+      questTitle: selectedQuest.title,
+      userId: 'currentUser',
+      userName: 'Вы',
+      imageUrl: selectedImage,
+      location: location || selectedQuest.location,
+      timestamp: new Date().toISOString(),
+      likes: 0,
+    };
+
+    setPhotos([newPhoto, ...photos]);
+    setShowCreateModal(false);
+    setSelectedQuest(null);
+    setSelectedImage(null);
+    setLocation('');
+    Alert.alert('Успех!', 'Фотография добавлена в ленту');
+  };
+
+  const resetModal = () => {
+    setShowCreateModal(false);
+    setSelectedQuest(null);
+    setSelectedImage(null);
+    setLocation('');
+  };
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>📸 Лента фотографий</Text>
-      </View>
-      {photos.map((photo) => (
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>📸 Лента фотографий</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.createButton}
+          onPress={() => setShowCreateModal(true)}
+        >
+          <Text style={styles.createButtonText}>➕ Создать фотографию</Text>
+        </TouchableOpacity>
+        {photos.map((photo) => (
         <View key={photo.id} style={styles.photoCard}>
           <View style={styles.photoHeader}>
             <View style={styles.userInfo}>
@@ -55,7 +163,91 @@ export default function FeedScreen() {
           </View>
         </View>
       ))}
-    </ScrollView>
+      </ScrollView>
+
+      <Modal
+        visible={showCreateModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={resetModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <TouchableOpacity style={styles.closeButton} onPress={resetModal}>
+              <Text style={styles.closeButtonText}>×</Text>
+            </TouchableOpacity>
+
+            <Text style={styles.modalTitle}>Создать фотографию</Text>
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Выберите квест:</Text>
+              <ScrollView style={styles.questsList} nestedScrollEnabled>
+                {mockQuests.map((quest) => (
+                  <TouchableOpacity
+                    key={quest.id}
+                    style={[
+                      styles.questOption,
+                      selectedQuest?.id === quest.id && styles.questOptionSelected,
+                    ]}
+                    onPress={() => setSelectedQuest(quest)}
+                  >
+                    <View style={styles.questOptionContent}>
+                      <Text style={styles.questOptionTitle}>{quest.title}</Text>
+                      <Text style={styles.questOptionDescription}>
+                        {quest.description}
+                      </Text>
+                      <Text style={styles.questOptionLocation}>
+                        📍 {quest.location} • +{quest.points} очков
+                      </Text>
+                    </View>
+                    {selectedQuest?.id === quest.id && (
+                      <Text style={styles.checkmark}>✓</Text>
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Фотография:</Text>
+              <TouchableOpacity style={styles.uploadButton} onPress={showImagePicker}>
+                <Text style={styles.uploadButtonText}>
+                  {selectedImage ? 'Фотография загружена ✓' : '📷 Загрузить фотографию'}
+                </Text>
+              </TouchableOpacity>
+
+              {selectedImage && (
+                <View style={styles.previewContainer}>
+                  <Image source={{ uri: selectedImage }} style={styles.previewImage} />
+                </View>
+              )}
+            </View>
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Местоположение (необязательно):</Text>
+              <TextInput
+                style={styles.locationInput}
+                placeholder="Введите местоположение"
+                value={location}
+                onChangeText={setLocation}
+                placeholderTextColor="#999"
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.submitButton,
+                (!selectedQuest || !selectedImage) && styles.submitButtonDisabled,
+              ]}
+              onPress={handleCreatePhoto}
+              disabled={!selectedQuest || !selectedImage}
+            >
+              <Text style={styles.submitButtonText}>Опубликовать</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
@@ -154,6 +346,158 @@ const styles = StyleSheet.create({
     color: '#e74c3c',
     fontWeight: '600',
     fontSize: 14,
+  },
+  createButton: {
+    backgroundColor: '#667eea',
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  createButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '90%',
+    position: 'relative',
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  closeButtonText: {
+    fontSize: 32,
+    color: '#999',
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 20,
+    marginTop: 10,
+  },
+  section: {
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+  },
+  questsList: {
+    maxHeight: 200,
+  },
+  questOption: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  questOptionSelected: {
+    borderColor: '#667eea',
+    backgroundColor: '#f0f4ff',
+  },
+  questOptionContent: {
+    flex: 1,
+  },
+  questOptionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  questOptionDescription: {
+    fontSize: 13,
+    color: '#666',
+    marginBottom: 6,
+  },
+  questOptionLocation: {
+    fontSize: 12,
+    color: '#667eea',
+    fontWeight: '500',
+  },
+  checkmark: {
+    fontSize: 24,
+    color: '#667eea',
+    fontWeight: 'bold',
+    marginLeft: 10,
+  },
+  uploadButton: {
+    backgroundColor: '#667eea',
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  uploadButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  previewContainer: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 3,
+    borderColor: '#667eea',
+  },
+  previewImage: {
+    width: '100%',
+    height: 200,
+    resizeMode: 'cover',
+  },
+  locationInput: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 16,
+    color: '#333',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  submitButton: {
+    backgroundColor: '#27ae60',
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  submitButtonDisabled: {
+    backgroundColor: '#ccc',
+  },
+  submitButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 
