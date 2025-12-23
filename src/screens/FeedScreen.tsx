@@ -23,6 +23,7 @@ export default function FeedScreen() {
   const [selectedQuest, setSelectedQuest] = useState<Quest | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [location, setLocation] = useState('');
+  const [filterQuestId, setFilterQuestId] = useState<string | null>(null);
 
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);
@@ -128,6 +129,17 @@ export default function FeedScreen() {
     setLocation('');
   };
 
+  // Фильтрация фотографий по выбранному квесту
+  const filteredPhotos = filterQuestId
+    ? photos.filter((photo) => photo.questId === filterQuestId)
+    : photos;
+
+  // Получение уникальных квестов из фотографий
+  const getUniqueQuests = () => {
+    const questIds = new Set(photos.map((photo) => photo.questId));
+    return mockQuests.filter((quest) => questIds.has(quest.id));
+  };
+
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -140,7 +152,67 @@ export default function FeedScreen() {
         >
           <Text style={styles.createButtonText}>➕ Создать фотографию</Text>
         </TouchableOpacity>
-        {photos.map((photo) => (
+
+        {/* Фильтр по квестам */}
+        <View style={styles.filterSection}>
+          <Text style={styles.filterTitle}>🔍 Фильтр по квестам:</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.filterScroll}
+            contentContainerStyle={styles.filterContainer}
+          >
+            <TouchableOpacity
+              style={[
+                styles.filterChip,
+                !filterQuestId && styles.filterChipActive,
+              ]}
+              onPress={() => setFilterQuestId(null)}
+            >
+              <Text
+                style={[
+                  styles.filterChipText,
+                  !filterQuestId && styles.filterChipTextActive,
+                ]}
+              >
+                Все
+              </Text>
+            </TouchableOpacity>
+            {getUniqueQuests().map((quest) => (
+              <TouchableOpacity
+                key={quest.id}
+                style={[
+                  styles.filterChip,
+                  filterQuestId === quest.id && styles.filterChipActive,
+                ]}
+                onPress={() => setFilterQuestId(quest.id)}
+              >
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    filterQuestId === quest.id && styles.filterChipTextActive,
+                  ]}
+                >
+                  {quest.title}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          {filterQuestId && (
+            <Text style={styles.filterCount}>
+              Показано: {filteredPhotos.length} из {photos.length}
+            </Text>
+          )}
+        </View>
+
+        {filteredPhotos.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyStateText}>
+              📷 Нет фотографий для выбранного квеста
+            </Text>
+          </View>
+        ) : (
+          filteredPhotos.map((photo) => (
         <View key={photo.id} style={styles.photoCard}>
           <View style={styles.photoHeader}>
             <View style={styles.userInfo}>
@@ -162,7 +234,8 @@ export default function FeedScreen() {
             </View>
           </View>
         </View>
-      ))}
+          ))
+        )}
       </ScrollView>
 
       <Modal
@@ -363,6 +436,60 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  filterSection: {
+    marginBottom: 20,
+  },
+  filterTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+  },
+  filterScroll: {
+    marginBottom: 8,
+  },
+  filterContainer: {
+    paddingRight: 16,
+  },
+  filterChip: {
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginRight: 8,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  filterChipActive: {
+    backgroundColor: '#667eea',
+    borderColor: '#667eea',
+  },
+  filterChipText: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
+  },
+  filterChipTextActive: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  filterCount: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 4,
+  },
+  emptyState: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 40,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    color: '#999',
+    textAlign: 'center',
   },
   modalOverlay: {
     flex: 1,
